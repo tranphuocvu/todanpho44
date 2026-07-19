@@ -14,6 +14,7 @@ import {
   Clock,
   AlertTriangle,
   Download,
+  Upload,
   Phone,
   User,
   PlusCircle,
@@ -45,41 +46,41 @@ import {
 export default function App() {
   // State from LocalStorage or Initial Data
   const [households, setHouseholds] = useState<Household[]>(() => {
-    const saved = localStorage.getItem('tdp44_households');
+    const saved = localStorage.getItem('tdp44_households_hcn_empty');
     return saved ? JSON.parse(saved) : INITIAL_HOUSEHOLDS;
   });
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
-    const saved = localStorage.getItem('tdp44_announcements');
+    const saved = localStorage.getItem('tdp44_announcements_hcn_empty');
     return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
   });
   const [complaints, setComplaints] = useState<Complaint[]>(() => {
-    const saved = localStorage.getItem('tdp44_complaints');
+    const saved = localStorage.getItem('tdp44_complaints_hcn_empty');
     return saved ? JSON.parse(saved) : INITIAL_COMPLAINTS;
   });
   const [finances, setFinances] = useState<FinanceTransaction[]>(() => {
-    const saved = localStorage.getItem('tdp44_finances');
+    const saved = localStorage.getItem('tdp44_finances_hcn_empty');
     return saved ? JSON.parse(saved) : INITIAL_FINANCES;
   });
   const [events, setEvents] = useState<CommunityEvent[]>(() => {
-    const saved = localStorage.getItem('tdp44_events');
+    const saved = localStorage.getItem('tdp44_events_hcn_empty');
     return saved ? JSON.parse(saved) : INITIAL_EVENTS;
   });
 
   // Persist states
   useEffect(() => {
-    localStorage.setItem('tdp44_households', JSON.stringify(households));
+    localStorage.setItem('tdp44_households_hcn_empty', JSON.stringify(households));
   }, [households]);
   useEffect(() => {
-    localStorage.setItem('tdp44_announcements', JSON.stringify(announcements));
+    localStorage.setItem('tdp44_announcements_hcn_empty', JSON.stringify(announcements));
   }, [announcements]);
   useEffect(() => {
-    localStorage.setItem('tdp44_complaints', JSON.stringify(complaints));
+    localStorage.setItem('tdp44_complaints_hcn_empty', JSON.stringify(complaints));
   }, [complaints]);
   useEffect(() => {
-    localStorage.setItem('tdp44_finances', JSON.stringify(finances));
+    localStorage.setItem('tdp44_finances_hcn_empty', JSON.stringify(finances));
   }, [finances]);
   useEffect(() => {
-    localStorage.setItem('tdp44_events', JSON.stringify(events));
+    localStorage.setItem('tdp44_events_hcn_empty', JSON.stringify(events));
   }, [events]);
 
   // Tab State
@@ -108,7 +109,7 @@ export default function App() {
   // New Household Form Input
   const [newHHead, setNewHHead] = useState('');
   const [newHAddress, setNewHAddress] = useState('');
-  const [newHCluster, setNewHCluster] = useState('Cụm 1');
+  const [newHCluster, setNewHCluster] = useState('Cụm 3144');
   const [newHId, setNewHId] = useState('');
 
   // New Member Form Input
@@ -132,7 +133,7 @@ export default function App() {
   // New Complaint Form Input
   const [newCSender, setNewCSender] = useState('');
   const [newCAddress, setNewCAddress] = useState('');
-  const [newCCluster, setNewCCluster] = useState('Cụm 1');
+  const [newCCluster, setNewCCluster] = useState('Cụm 3144');
   const [newCPhone, setNewCPhone] = useState('');
   const [newCTitle, setNewCTitle] = useState('');
   const [newCContent, setNewCContent] = useState('');
@@ -166,12 +167,24 @@ export default function App() {
   };
 
   // Helper Calculations
-  const totalHouseholdsInState = households.length + 837; // keep realistic base of 842 offset
-  const totalPopulationInState = households.reduce((acc, h) => acc + h.memberCount, 0) + 3088; // base 3105 offset
+  const totalHouseholdsInState = households.length;
+  const totalPopulationInState = households.reduce((acc, h) => acc + h.memberCount, 0);
   const totalPendingComplaints = complaints.filter(c => c.status !== 'Đã xong').length;
   const currentFundBalance = finances.reduce((sum, trans) => {
     return trans.type === 'Thu' ? sum + trans.amount : sum - trans.amount;
-  }, 45200000 - finances.reduce((sum, trans) => trans.type === 'Thu' ? 0 : 0, 0)); // base offset
+  }, 0);
+
+  const fundActivityBalance = finances
+    .filter(f => f.category === 'Quỹ hoạt động' || f.category === 'Chi hoạt động')
+    .reduce((sum, f) => f.type === 'Thu' ? sum + f.amount : sum - f.amount, 0);
+
+  const fundStudyBalance = finances
+    .filter(f => f.category === 'Quỹ khuyến học')
+    .reduce((sum, f) => f.type === 'Thu' ? sum + f.amount : sum - f.amount, 0);
+
+  const fundWelfareBalance = finances
+    .filter(f => f.category === 'Quỹ phòng chống thiên tai' || f.category === 'Quỹ đền ơn đáp nghĩa')
+    .reduce((sum, f) => f.type === 'Thu' ? sum + f.amount : sum - f.amount, 0);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
@@ -393,6 +406,258 @@ export default function App() {
     }
   };
 
+  const handleImportCSV = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        if (!text) {
+          showToast('File trống hoặc không thể đọc!', 'error');
+          return;
+        }
+
+        const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+        if (lines.length < 2) {
+          showToast('File không đúng định dạng hoặc thiếu dữ liệu!', 'error');
+          return;
+        }
+
+        const parseCSVLine = (line: string) => {
+          const result = [];
+          let current = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              result.push(current.trim().replace(/^"|"$/g, ''));
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          result.push(current.trim().replace(/^"|"$/g, ''));
+          return result;
+        };
+
+        const headers = parseCSVLine(lines[0]);
+        const importedHouseholds: Household[] = [];
+
+        let idIdx = 0;
+        let headNameIdx = 1;
+        let addressIdx = 2;
+        let clusterIdx = 3;
+        let countIdx = 4;
+        let dateIdx = 5;
+
+        headers.forEach((h, idx) => {
+          const lower = h.toLowerCase();
+          if (lower.includes('mã') || lower.includes('id')) idIdx = idx;
+          else if (lower.includes('chủ') || lower.includes('tên')) headNameIdx = idx;
+          else if (lower.includes('địa') || lower.includes('nhà')) addressIdx = idx;
+          else if (lower.includes('cụm') || lower.includes('khu')) clusterIdx = idx;
+          else if (lower.includes('nhân') || lower.includes('số')) countIdx = idx;
+          else if (lower.includes('ngày') || lower.includes('đăng')) dateIdx = idx;
+        });
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = parseCSVLine(lines[i]);
+          if (cols.length < 3) continue;
+
+          const householdId = cols[idIdx] || `HK-044-${Math.floor(100 + Math.random() * 900)}`;
+          const headName = cols[headNameIdx] || 'Chưa rõ';
+          const address = cols[addressIdx] || 'Chưa rõ';
+          const clusterRaw = cols[clusterIdx] || 'Cụm 3144';
+          
+          let cluster = clusterRaw.trim();
+          if (!cluster.startsWith('Cụm ')) {
+            if (cluster === '1' || cluster.includes('3144')) cluster = 'Cụm 3144';
+            else if (cluster === '2' || cluster.includes('3244')) cluster = 'Cụm 3244';
+            else if (cluster === '3' || cluster.includes('3344')) cluster = 'Cụm 3344';
+            else if (cluster === '4' || cluster.includes('3444')) cluster = 'Cụm 3444';
+            else if (cluster === '5' || cluster.includes('3544')) cluster = 'Cụm 3544';
+            else if (cluster === '6' || cluster.includes('3644')) cluster = 'Cụm 3644';
+            else if (cluster === '7' || cluster.includes('4144')) cluster = 'Cụm 4144';
+            else cluster = 'Cụm 3144';
+          }
+          
+          const memberCount = parseInt(cols[countIdx]) || 1;
+          const registrationDate = cols[dateIdx] || new Date().toISOString().split('T')[0];
+          const newId = `H_IMP_${Date.now()}_${i}`;
+
+          const members: Resident[] = [
+            {
+              id: `R_IMP_${Date.now()}_${i}_1`,
+              name: headName,
+              dob: '1980-01-01',
+              gender: 'Nam',
+              relation: 'Chủ hộ',
+              phone: '',
+              cccd: '',
+              occupation: 'Tự do'
+            }
+          ];
+
+          for (let m = 2; m <= memberCount; m++) {
+            members.push({
+              id: `R_IMP_${Date.now()}_${i}_${m}`,
+              name: `Thành viên ${m}`,
+              dob: '1990-01-01',
+              gender: 'Nữ',
+              relation: 'Thành viên',
+              phone: '',
+              cccd: '',
+              occupation: 'Tự do'
+            });
+          }
+
+          importedHouseholds.push({
+            id: newId,
+            householdId,
+            headName,
+            address,
+            cluster,
+            memberCount: members.length,
+            verified: true,
+            registrationDate,
+            members
+          });
+        }
+
+        if (importedHouseholds.length === 0) {
+          showToast('Không tìm thấy dữ liệu hợp lệ trong file!', 'error');
+          return;
+        }
+
+        setHouseholds(prev => [...prev, ...importedHouseholds]);
+        showToast(`Đã nhập thành công ${importedHouseholds.length} hộ dân từ file!`, 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Có lỗi xảy ra khi xử lý file CSV!', 'error');
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const handleImportFinanceCSV = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        if (!text) {
+          showToast('File trống hoặc không thể đọc!', 'error');
+          return;
+        }
+
+        const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+        if (lines.length < 2) {
+          showToast('File không đúng định dạng hoặc thiếu dữ liệu!', 'error');
+          return;
+        }
+
+        const parseCSVLine = (line: string) => {
+          const result = [];
+          let current = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              result.push(current.trim().replace(/^"|"$/g, ''));
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          result.push(current.trim().replace(/^"|"$/g, ''));
+          return result;
+        };
+
+        const headers = parseCSVLine(lines[0]);
+        const importedFinances: FinanceTransaction[] = [];
+
+        let dateIdx = 0;
+        let typeIdx = 1;
+        let categoryIdx = 2;
+        let amountIdx = 3;
+        let descIdx = 4;
+        let performerIdx = 5;
+
+        headers.forEach((h, idx) => {
+          const lower = h.toLowerCase();
+          if (lower.includes('ngày') || lower.includes('date')) dateIdx = idx;
+          else if (lower.includes('loại') || lower.includes('type')) typeIdx = idx;
+          else if (lower.includes('hạng mục') || lower.includes('chuyên mục') || lower.includes('category')) categoryIdx = idx;
+          else if (lower.includes('số tiền') || lower.includes('tiền') || lower.includes('amount')) amountIdx = idx;
+          else if (lower.includes('mô tả') || lower.includes('nội dung') || lower.includes('desc')) descIdx = idx;
+          else if (lower.includes('người') || lower.includes('performer')) performerIdx = idx;
+        });
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = parseCSVLine(lines[i]);
+          if (cols.length < 3) continue;
+
+          const date = cols[dateIdx] || new Date().toISOString().split('T')[0];
+          const rawType = cols[typeIdx] || 'Thu';
+          const type: 'Thu' | 'Chi' = rawType.trim().toLowerCase().includes('chi') ? 'Chi' : 'Thu';
+          
+          const rawCategory = cols[categoryIdx] || 'Quỹ hoạt động';
+          let category: 'Quỹ hoạt động' | 'Quỹ khuyến học' | 'Quỹ đền ơn đáp nghĩa' | 'Quỹ phòng chống thiên tai' | 'Chi hoạt động' = 'Quỹ hoạt động';
+          
+          const lowerCat = rawCategory.toLowerCase();
+          if (lowerCat.includes('khuyến học')) category = 'Quỹ khuyến học';
+          else if (lowerCat.includes('đền ơn') || lowerCat.includes('đáp nghĩa')) category = 'Quỹ đền ơn đáp nghĩa';
+          else if (lowerCat.includes('thiên tai') || lowerCat.includes('an sinh')) category = 'Quỹ phòng chống thiên tai';
+          else if (lowerCat.includes('chi hoạt động')) category = 'Chi hoạt động';
+
+          const rawAmount = cols[amountIdx] ? cols[amountIdx].replace(/[^0-9.-]/g, '') : '0';
+          const amount = Math.abs(parseInt(rawAmount)) || 0;
+          const description = cols[descIdx] || 'Chưa có mô tả';
+          const performer = cols[performerIdx] || 'Tổ dân phố';
+
+          importedFinances.push({
+            id: `F_IMP_${Date.now()}_${i}`,
+            date,
+            type,
+            category,
+            amount,
+            description,
+            performer
+          });
+        }
+
+        if (importedFinances.length === 0) {
+          showToast('Không tìm thấy dữ liệu hợp lệ trong file!', 'error');
+          return;
+        }
+
+        setFinances(prev => [...prev, ...importedFinances]);
+        showToast(`Đã nhập thành công ${importedFinances.length} giao dịch tài chính từ file!`, 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Có lỗi xảy ra khi xử lý file CSV!', 'error');
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const handleClearAllHouseholds = () => {
+    if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ danh sách nhân hộ khẩu không? Hành động này không thể hoàn tác.')) {
+      setHouseholds([]);
+      showToast('Đã xóa toàn bộ danh sách nhân hộ khẩu thành công!', 'info');
+    }
+  };
+
+  const handleClearAllComplaints = () => {
+    if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ danh sách phản ánh/kiến nghị không? Hành động này không thể hoàn tác.')) {
+      setComplaints([]);
+      setSelectedComplaint(null);
+      showToast('Đã xóa toàn bộ danh sách phản ánh/kiến nghị thành công!', 'info');
+    }
+  };
+
   const handleExportData = (type: 'households' | 'complaints' | 'finances') => {
     let headers = '';
     let rows = '';
@@ -446,20 +711,12 @@ export default function App() {
         <div className="flex items-center space-x-4">
           <div className="bg-indigo-600 text-white w-10 h-10 flex items-center justify-center rounded font-extrabold text-xl shadow-md shadow-indigo-200">44</div>
           <div>
-            <h1 className="font-black text-xl leading-none text-slate-900">Ứng dụng Tổ dân phố 44</h1>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">Hệ thống quản lý dân cư số phường Dịch Vọng Hậu</p>
+            <h1 className="font-black text-xl leading-none text-slate-900">Ứng dụng Tổ dân phố 44 Hòa Cường Nam</h1>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">Hệ thống quản lý dân cư số 44 Hòa Cường Nam, phường Hòa Cường</p>
           </div>
         </div>
         
-        <div className="flex items-center space-x-6">
-          <div className="flex flex-col items-end border-r border-slate-200 pr-6">
-            <span className="font-bold text-sm text-slate-800">Nguyễn Văn An</span>
-            <span className="text-[9px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-black uppercase mt-0.5 tracking-wider">Tổ trưởng</span>
-          </div>
-          <div className="w-10 h-10 bg-indigo-600 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white font-bold text-sm">
-            AN
-          </div>
-        </div>
+        {/* Removed user profile widget as requested */}
       </header>
 
       {/* Workspace Area */}
@@ -525,8 +782,8 @@ export default function App() {
 
           <div id="support_panel" className="p-4 bg-slate-800 rounded-2xl border border-slate-700 shadow-inner">
             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-wider mb-1">Hỗ trợ kỹ thuật số</p>
-            <p className="text-sm font-bold text-white">Hotline: 090.123.4567</p>
-            <p className="text-[10px] text-slate-400 mt-1">Hệ thống quản lý dân cư TDP 44</p>
+            <p className="text-sm font-bold text-white">Hotline: 0905 624.058</p>
+            <p className="text-[10px] text-slate-400 mt-1">TDP 44, P. Hòa Cường, Đà Nẵng</p>
           </div>
         </nav>
 
@@ -550,7 +807,7 @@ export default function App() {
                   </div>
                   <div className="flex items-end justify-between">
                     <h2 className="text-3xl font-black text-slate-950">{totalHouseholdsInState}</h2>
-                    <span className="text-green-600 text-xs font-bold bg-green-50 px-2 py-0.5 rounded">+5 tháng này</span>
+                    <span className="text-indigo-600 text-xs font-bold bg-indigo-50 px-2 py-0.5 rounded">TDP 44</span>
                   </div>
                 </div>
 
@@ -694,9 +951,27 @@ export default function App() {
                   <p className="text-xs text-slate-500 mt-1">Quản lý hồ sơ cư trú số và thành viên gia đình trong tổ.</p>
                 </div>
                 <div className="flex space-x-3">
+                  <label className="flex items-center space-x-1.5 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm hover:bg-slate-100 cursor-pointer">
+                    <Upload size={14} />
+                    <span>Nhập Excel/CSV</span>
+                    <input
+                      type="file"
+                      accept=".csv,.txt"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImportCSV(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                   <button onClick={() => handleExportData('households')} className="flex items-center space-x-1.5 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm hover:bg-slate-100">
                     <Download size={14} />
                     <span>Xuất CSV</span>
+                  </button>
+                  <button onClick={handleClearAllHouseholds} className="flex items-center space-x-1.5 bg-rose-50 border border-rose-200 text-rose-600 px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm hover:bg-rose-100 transition-colors">
+                    <Trash2 size={14} />
+                    <span>Xóa toàn bộ</span>
                   </button>
                   <button onClick={() => setShowAddHousehold(true)} className="flex items-center space-x-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-md hover:bg-indigo-700 shadow-indigo-200">
                     <Plus size={14} />
@@ -719,15 +994,15 @@ export default function App() {
                     className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2 rounded-xl text-sm focus:outline-none focus:border-indigo-500"
                   />
                 </div>
-                <div className="flex items-center space-x-3 w-full md:w-auto">
-                  <span className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center">
+                <div className="flex items-center space-x-3 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                  <span className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center shrink-0">
                     <Filter className="mr-1.5 text-indigo-500" size={14} /> Cụm dân cư:
                   </span>
-                  {['All', 'Cụm 1', 'Cụm 2', 'Cụm 3', 'Cụm 4'].map((cl) => (
+                  {['All', 'Cụm 3144', 'Cụm 3244', 'Cụm 3344', 'Cụm 3444', 'Cụm 3544', 'Cụm 3644', 'Cụm 4144'].map((cl) => (
                     <button
                       key={cl}
                       onClick={() => setSelectedCluster(cl)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${selectedCluster === cl ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all shrink-0 ${selectedCluster === cl ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
                       {cl === 'All' ? 'Tất cả' : cl}
                     </button>
@@ -1028,10 +1303,16 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <button onClick={() => handleExportData('complaints')} className="flex items-center space-x-1 bg-white border border-slate-200 text-slate-700 px-3.5 py-2 rounded-xl font-bold text-xs shadow-sm hover:bg-slate-50">
-                  <Download size={14} />
-                  <span>Xuất báo cáo ý kiến</span>
-                </button>
+                <div className="flex space-x-2 w-full md:w-auto justify-end">
+                  <button onClick={() => handleExportData('complaints')} className="flex items-center space-x-1 bg-white border border-slate-200 text-slate-700 px-3.5 py-2 rounded-xl font-bold text-xs shadow-sm hover:bg-slate-50">
+                    <Download size={14} />
+                    <span>Xuất báo cáo ý kiến</span>
+                  </button>
+                  <button onClick={handleClearAllComplaints} className="flex items-center space-x-1 bg-rose-50 border border-rose-200 text-rose-600 px-3.5 py-2 rounded-xl font-bold text-xs shadow-sm hover:bg-rose-100 transition-colors">
+                    <Trash2 size={14} />
+                    <span>Xóa toàn bộ</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
@@ -1163,12 +1444,32 @@ export default function App() {
                   <h2 className="text-2xl font-black text-slate-900">Quản lý Quỹ & Tài chính Tổ dân phố</h2>
                   <p className="text-xs text-slate-500 mt-1">Công khai, minh bạch các khoản đóng góp tự nguyện, quỹ khuyến học và chi tiêu công ích của khu phố.</p>
                 </div>
-                <div className="flex space-x-3">
-                  <button onClick={() => handleExportData('finances')} className="flex items-center space-x-1.5 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm hover:bg-slate-100">
-                    <Download size={14} />
-                    <span>Xuất Sổ quỹ</span>
+                <div className="flex items-center space-x-3">
+                  <label className="flex items-center space-x-2.5 bg-white border border-slate-200 text-slate-700 p-3 rounded-xl font-bold text-xs shadow-sm hover:bg-slate-100 cursor-pointer transition-colors">
+                    <Upload size={16} className="text-slate-500" />
+                    <div className="flex flex-col text-left leading-tight">
+                      <span className="text-[10px] text-slate-400 font-medium">Nhập</span>
+                      <span className="text-slate-700">Excel/CSV</span>
+                    </div>
+                    <input
+                      type="file"
+                      accept=".csv,.txt"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImportFinanceCSV(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <button onClick={() => handleExportData('finances')} className="flex items-center space-x-2.5 bg-white border border-slate-200 text-slate-700 p-3 rounded-xl font-bold text-xs shadow-sm hover:bg-slate-100 transition-colors">
+                    <Download size={16} className="text-slate-500" />
+                    <div className="flex flex-col text-left leading-tight">
+                      <span className="text-[10px] text-slate-400 font-medium">Xuất</span>
+                      <span className="text-slate-700">CSV</span>
+                    </div>
                   </button>
-                  <button onClick={() => setShowAddFinance(true)} className="flex items-center space-x-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-md hover:bg-indigo-700 shadow-indigo-200">
+                  <button onClick={() => setShowAddFinance(true)} className="flex items-center space-x-1.5 bg-indigo-600 text-white px-4 py-3.5 rounded-xl font-bold text-xs shadow-md hover:bg-indigo-700 shadow-indigo-200 transition-all self-stretch">
                     <Plus size={14} />
                     <span>Ghi chép Thu / Chi</span>
                   </button>
@@ -1179,17 +1480,17 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                   <p className="text-slate-500 text-xs font-black uppercase tracking-wider mb-1">Quỹ hoạt động khu phố</p>
-                  <h3 className="text-2xl font-black text-slate-950">{formatCurrency(32400000)}</h3>
+                  <h3 className="text-2xl font-black text-slate-950">{formatCurrency(fundActivityBalance)}</h3>
                   <div className="text-[10px] text-slate-400 mt-2">Dùng cho chi tiêu thường niên, sửa chữa bóng đèn, công ích</div>
                 </div>
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                   <p className="text-slate-500 text-xs font-black uppercase tracking-wider mb-1">Quỹ khuyến học & Thiếu nhi</p>
-                  <h3 className="text-2xl font-black text-slate-950">{formatCurrency(12800000)}</h3>
+                  <h3 className="text-2xl font-black text-slate-950">{formatCurrency(fundStudyBalance)}</h3>
                   <div className="text-[10px] text-slate-400 mt-2">Tuyên dương học sinh xuất sắc, quà Trung thu, Tết thiếu nhi</div>
                 </div>
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                   <p className="text-slate-500 text-xs font-black uppercase tracking-wider mb-1">Quỹ an sinh & Phòng chống thiên tai</p>
-                  <h3 className="text-2xl font-black text-slate-950">{formatCurrency(20200000)}</h3>
+                  <h3 className="text-2xl font-black text-slate-950">{formatCurrency(fundWelfareBalance)}</h3>
                   <div className="text-[10px] text-slate-400 mt-2">Ủng hộ bão lụt, hỗ trợ hoàn cảnh khó khăn đột xuất</div>
                 </div>
               </div>
@@ -1225,24 +1526,36 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
-                      {finances
-                        .filter(f => financeTypeFilter === 'All' || f.type === financeTypeFilter)
-                        .map((f) => (
-                          <tr key={f.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="p-4 pl-6 font-mono font-semibold text-slate-600">{f.date}</td>
-                            <td className="p-4">
-                              <span className={`inline-block font-black px-2 py-0.5 rounded text-[10px] uppercase ${f.type === 'Thu' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                {f.type}
-                              </span>
-                            </td>
-                            <td className="p-4 font-bold text-slate-700">{f.category}</td>
-                            <td className="p-4 text-slate-600 max-w-sm font-medium">{f.description}</td>
-                            <td className={`p-4 text-right font-bold text-sm ${f.type === 'Thu' ? 'text-green-600' : 'text-red-600'}`}>
-                              {f.type === 'Thu' ? '+' : '-'}{formatCurrency(f.amount)}
-                            </td>
-                            <td className="p-4 pr-6 text-right text-slate-500 font-bold">{f.performer}</td>
-                          </tr>
-                        ))}
+                      {finances.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="text-center p-10 text-slate-400">
+                            <div className="flex flex-col items-center justify-center">
+                              <Coins size={36} className="mb-2 text-slate-300" />
+                              <p className="font-bold text-slate-500">Chưa có giao dịch tài chính nào</p>
+                              <p className="text-xs mt-0.5">Nhấp vào "Ghi chép Thu / Chi" để thêm giao dịch đầu tiên.</p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        finances
+                          .filter(f => financeTypeFilter === 'All' || f.type === financeTypeFilter)
+                          .map((f) => (
+                            <tr key={f.id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="p-4 pl-6 font-mono font-semibold text-slate-600">{f.date}</td>
+                              <td className="p-4">
+                                <span className={`inline-block font-black px-2 py-0.5 rounded text-[10px] uppercase ${f.type === 'Thu' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {f.type}
+                                </span>
+                              </td>
+                              <td className="p-4 font-bold text-slate-700">{f.category}</td>
+                              <td className="p-4 text-slate-600 max-w-sm font-medium">{f.description}</td>
+                              <td className={`p-4 text-right font-bold text-sm ${f.type === 'Thu' ? 'text-green-600' : 'text-red-600'}`}>
+                                {f.type === 'Thu' ? '+' : '-'}{formatCurrency(f.amount)}
+                              </td>
+                              <td className="p-4 pr-6 text-right text-slate-500 font-bold">{f.performer}</td>
+                            </tr>
+                          ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1312,9 +1625,9 @@ export default function App() {
 
       {/* Footer Area */}
       <footer id="app_footer" className="h-10 bg-slate-100 border-t border-slate-200 px-8 flex items-center justify-between text-[9px] text-slate-500 font-black uppercase tracking-widest shrink-0">
-        <div>© 2026 BAN ĐIỀU HÀNH TỔ DÂN PHỐ 44 • PHƯỜNG DỊCH VỌNG HẬU</div>
+        <div>© 2026 BAN ĐIỀU HÀNH TỔ DÂN PHỐ 44 HÒA CƯỜNG NAM - PHƯỜNG HÒA CƯỜNG</div>
         <div className="flex space-x-6">
-          <span>PHIÊN BẢN 1.0.2 (MVP)</span>
+          <span>PHIÊN BẢN 1.0</span>
           <span className="text-indigo-600">HỆ THỐNG ĐANG HOẠT ĐỘNG ỔN ĐỊNH</span>
         </div>
       </footer>
@@ -1371,10 +1684,13 @@ export default function App() {
                     onChange={(e) => setNewHCluster(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold text-slate-700"
                   >
-                    <option>Cụm 1</option>
-                    <option>Cụm 2</option>
-                    <option>Cụm 3</option>
-                    <option>Cụm 4</option>
+                    <option>Cụm 3144</option>
+                    <option>Cụm 3244</option>
+                    <option>Cụm 3344</option>
+                    <option>Cụm 3444</option>
+                    <option>Cụm 3544</option>
+                    <option>Cụm 3644</option>
+                    <option>Cụm 4144</option>
                   </select>
                 </div>
               </div>
@@ -1643,10 +1959,13 @@ export default function App() {
                     onChange={(e) => setNewCCluster(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-bold text-slate-700"
                   >
-                    <option>Cụm 1</option>
-                    <option>Cụm 2</option>
-                    <option>Cụm 3</option>
-                    <option>Cụm 4</option>
+                    <option>Cụm 3144</option>
+                    <option>Cụm 3244</option>
+                    <option>Cụm 3344</option>
+                    <option>Cụm 3444</option>
+                    <option>Cụm 3544</option>
+                    <option>Cụm 3644</option>
+                    <option>Cụm 4144</option>
                   </select>
                 </div>
               </div>

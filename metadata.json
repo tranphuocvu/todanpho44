@@ -1,6 +1,6 @@
 {
-  "name": "Ứng dụng Tổ dân phố 44",
-  "description": "Hệ thống quản lý dân cư số dành cho Tổ dân phố 44, phường Dịch Vọng Hậu.",
+  "name": "Ứng dụng Tổ dân phố 44 Hòa Cường Nam",
+  "description": "Hệ thống quản lý dân cư số dành cho Tổ dân phố 44 Hòa Cường Nam, phường Hòa Cường.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
